@@ -1,7 +1,5 @@
 package model
 
-import ()
-
 type URL struct {
 	ID          string
 	OriginalURL string
