@@ -8,4 +8,5 @@ import (
 
 func RoutersPage(router *gin.Engine) {
 	router.GET("/shortlink", controllerpage.ShortLinkPage)
+	// Create Shortlink
 }

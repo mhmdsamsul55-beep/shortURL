@@ -9,6 +9,8 @@ import (
 	"ProjectShortLink/routers"
 	"ProjectShortLink/service"
 
+	"log"
+
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
@@ -17,22 +19,27 @@ func main() {
 
 	_ = godotenv.Load(".env")
 
-	mysql.ConnectDB()
+	db, err := mysql.ConnectDB()
+	if err != nil {
+		log.Fatal(err)
+	}
 	config.InitSessionStore()
 
 	router := gin.Default()
-	repo := repository.NewShortLinkRepo()
+
+	repo := repository.NewShortLinkRepo(db)
 
 	shortlinkService := service.NewShortlinkService(repo)
 	shortlinkHandler := handler.NewShortlinkHandler(shortlinkService)
-	
-	router.POST("/api/urls", shortlinkHandler.Create)
+
 	router.LoadHTMLGlob("views/*.html")
 	router.Static("static", "./static")
 
 	routers.RoutersPage(router)
-	api.ApiShort(router)
+	api.ApiShort(router, shortlinkHandler)
 
-	router.Run(":3000")
+	if err := router.Run(":3000"); err != nil {
+		log.Fatal(err)
+	}
 
 }

@@ -1,55 +1,62 @@
 package repository
 
 import (
-	"ProjectShortLink/model"
 	"errors"
+
+	"ProjectShortLink/model"
+
+	"gorm.io/gorm"
 )
 
+var ErrNotFound = errors.New("shortlink tidak ditemukan")
+
 type ShortlinkRepository struct {
-	data []model.URL
+	db *gorm.DB
 }
 
-func NewShortLinkRepo() *ShortlinkRepository {
-	return &ShortlinkRepository{
-		data: make([]model.URL, 0),
-	}
+func NewShortLinkRepo(db *gorm.DB) *ShortlinkRepository {
+	return &ShortlinkRepository{db: db}
 }
 
-// create
-func (r *ShortlinkRepository) Create(url model.URL) error {
-	for _, item := range r.data {
-		if item.ShortCode == url.ShortCode {
-			return errors.New("short code sudah digunakan")
-		}
+func (r *ShortlinkRepository) Create(shortlink model.URL) error {
+	return r.db.Create(&shortlink).Error
+}
+
+func (r *ShortlinkRepository) FindByShortCode(code string) (model.URL, error) {
+	var shortlink model.URL
+	err := r.db.Where("short_code = ?", code).First(&shortlink).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return model.URL{}, ErrNotFound
 	}
-	r.data = append(r.data, url)
+	return shortlink, err
+}
+
+func (r *ShortlinkRepository) FindAll() ([]model.URL, error) {
+	var shortlinks []model.URL
+	err := r.db.Order("created_at DESC").Find(&shortlinks).Error
+	return shortlinks, err
+}
+
+func (r *ShortlinkRepository) DeleteByID(id string) error {
+	result := r.db.Delete(&model.URL{}, "id = ?", id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
 	return nil
 }
 
-// mencari url berdasarkan dengan code
-func (r *ShortlinkRepository) FindbyShortCode(code string) (model.URL, bool) {
-	for _, item := range r.data {
-		if item.ShortCode == code {
-			return item, true
-		}
+func (r *ShortlinkRepository) IncrementClick(code string) error {
+	result := r.db.Model(&model.URL{}).
+		Where("short_code = ?", code).
+		UpdateColumn("click_count", gorm.Expr("click_count + ?", 1))
+	if result.Error != nil {
+		return result.Error
 	}
-	return model.URL{}, false
-}
-
-// mencari semua url
-func (r *ShortlinkRepository) FindAll() []model.URL {
-	result := make([]model.URL, len(r.data))
-	copy(result, r.data)
-	return result
-}
-
-// Menghapus URL berdasarkan id
-func (r *ShortlinkRepository) DeleteByID(id string) bool {
-	for i, item := range r.data {
-		if item.ID == id {
-			r.data = append(r.data[:i], r.data[i+1:]...)
-			return true
-		}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
 	}
-	return false
+	return nil
 }

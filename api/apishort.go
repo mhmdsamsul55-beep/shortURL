@@ -1,9 +1,16 @@
 package api
 
-import "github.com/gin-gonic/gin"
+import (
+	"ProjectShortLink/controller/controllerhandle"
+	"ProjectShortLink/handler"
 
-func ApiShort(api *gin.Engine) {
+	"github.com/gin-gonic/gin"
+)
 
+func ApiShort(api *gin.Engine, shortlinkHandler *handler.ShortlinkHandler) {
 	apipage := api.Group("/api")
-	apipage.GET("")
+	apipage.POST("/urls", controllerhandle.CreateShort(shortlinkHandler))
+	apipage.GET("/urls", controllerhandle.GetAllShort(shortlinkHandler))
+	apipage.GET("/:code", controllerhandle.RedirectShort(shortlinkHandler))
+	apipage.DELETE("/urls/:id", controllerhandle.DeleteShort(shortlinkHandler))
 }

@@ -1,25 +1,12 @@
 
-// ============================================
-// SHORTLY FRONTEND
-// ============================================
-// Saat ini masih menggunakan localStorage.
-// Nanti bagian ini bisa diganti dengan API Go.
-//
-// Contoh:
-// const API_BASE_URL = "http://localhost:8080/api";
-// ============================================
-
-
-const API_BASE_URL = null;
+const API_BASE_URL = "/api";
 
 
 // ============================================
 // STATE
 // ============================================
 
-let urls = JSON.parse(
-    localStorage.getItem("shortly_urls") || "[]"
-);
+let urls = [];
 
 
 // ============================================
@@ -71,6 +58,7 @@ const statAverage =
 // ============================================
 
 render();
+loadShortlinks();
 
 
 // ============================================
@@ -118,103 +106,52 @@ form.addEventListener(
         }
 
 
-        if (API_BASE_URL) {
-
-            createWithBackend(
-                url,
-                alias
-            );
-
-        } else {
-
-            createMockUrl(
-                url,
-                alias
-            );
-
-        }
+        createWithBackend(url, alias);
 
     }
 );
 
 
 // ============================================
-// MOCK CREATE
-// ============================================
-
-function createMockUrl(url, alias) {
-
-    let code;
-
-
-    if (alias) {
-
-        const exists =
-            urls.some(
-                item =>
-                    item.code === alias
-            );
-
-
-        if (exists) {
-
-            showMessage(
-                "That alias is already taken.",
-                "error"
-            );
-
-            return;
-
-        }
-
-
-        code = alias;
-
-    } else {
-
-        code = generateCode(6);
-
-    }
-
-
-    const item = {
-
-        id: crypto.randomUUID(),
-
-        code,
-
-        originalUrl: url,
-
-        clicks: 0,
-
-        createdAt:
-            new Date().toISOString()
-
-    };
-
-
-    urls.unshift(item);
-
-    save();
-
-    render();
-
-    showResult(code);
-
-    form.reset();
-
-
-    showMessage(
-        "Your short link is ready.",
-        "success"
-    );
-
-}
-
-
-// ============================================
 // BACKEND
 // ============================================
+
+async function loadShortlinks() {
+    try {
+        const data = await apiRequest("/urls");
+
+        if (!Array.isArray(data.data)) {
+            throw new Error("Invalid response received from server.");
+        }
+
+        urls = data.data.map(normalizeShortlink);
+        render();
+    } catch (error) {
+        console.error(error);
+        showMessage(error.message, "error");
+    }
+}
+
+async function apiRequest(path, options = {}) {
+    const response = await fetch(`${API_BASE_URL}${path}`, options);
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.message || `Request failed (${response.status}).`);
+    }
+
+    return data;
+}
+
+function normalizeShortlink(item) {
+    return {
+        id: item.id,
+        code: item.short_code,
+        originalUrl: item.original_url,
+        clicks: item.click_count,
+        createdAt: item.created_at
+    };
+}
 
 async function createWithBackend(
     url,
@@ -223,100 +160,43 @@ async function createWithBackend(
 
     try {
 
-        const response =
-            await fetch(
-                `${API_BASE_URL}/urls`,
-                {
-                    method: "POST",
+        const data = await apiRequest("/urls", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                url,
+                custom_code: alias
+            })
+        });
 
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
-
-                    body: JSON.stringify({
-                        url,
-
-                        customCode:
-                            alias || null
-                    })
-                }
-            );
-
-
-        if (!response.ok) {
-
-            throw new Error(
-                "Failed to create URL"
-            );
-
-        }
-
-
-        const data =
-            await response.json();
-
-
-        showBackendResult(data);
-
+        showBackendResult(
+            new URL(data.short_url, window.location.origin).href
+        );
         form.reset();
-
 
         showMessage(
             "Your short link is ready.",
             "success"
         );
 
+        await loadShortlinks();
 
     } catch (error) {
 
         console.error(error);
 
-        showMessage(
-            "Unable to connect to the server.",
-            "error"
-        );
+        showMessage(error.message, "error");
 
     }
 
 }
 
 
-// ============================================
-// RESULT
-// ============================================
-
-function showResult(code) {
-
-    const link =
-        `https://sho.rt/${code}`;
-
-
+function showBackendResult(link) {
     shortUrl.href = link;
-
     shortUrl.textContent = link;
-
-
-    resultSection.classList.remove(
-        "hidden"
-    );
-
-
-    resultSection.scrollIntoView({
-        behavior: "smooth",
-        block: "center"
-    });
-
-}
-
-
-function showBackendResult(data) {
-
-    shortUrl.href =
-        data.shortUrl;
-
-    shortUrl.textContent =
-        data.shortUrl;
 
 
     resultSection.classList.remove(
@@ -479,9 +359,7 @@ function renderLinks() {
 function createLinkHTML(item) {
 
     const short =
-        `https://sho.rt/${escapeHtml(
-            item.code
-        )}`;
+        `${window.location.origin}${API_BASE_URL}/${encodeURIComponent(item.code)}`;
 
 
     return `
@@ -491,13 +369,10 @@ function createLinkHTML(item) {
             <div class="link-main">
 
                 <a
-                    href="#"
+                    href="${escapeHtml(short)}"
                     class="short-link"
-                    data-code="${escapeHtml(
-                        item.code
-                    )}"
                 >
-                    ${short}
+                    ${escapeHtml(short)}
                 </a>
 
                 <span class="original-link">
@@ -574,49 +449,6 @@ urlList.addEventListener(
         }
 
 
-        // SHORT LINK
-
-        const link =
-            event.target.closest(
-                ".short-link"
-            );
-
-
-        if (!link) {
-            return;
-        }
-
-
-        event.preventDefault();
-
-
-        const code =
-            link.dataset.code;
-
-
-        const item =
-            urls.find(
-                url =>
-                    url.code === code
-            );
-
-
-        if (!item) {
-            return;
-        }
-
-
-        item.clicks++;
-
-        save();
-
-        render();
-
-
-        alert(
-            `Redirecting to:\n\n${item.originalUrl}`
-        );
-
     }
 );
 
@@ -625,7 +457,7 @@ urlList.addEventListener(
 // DELETE
 // ============================================
 
-function deleteUrl(id) {
+async function deleteUrl(id) {
 
     const confirmed =
         confirm(
@@ -638,63 +470,15 @@ function deleteUrl(id) {
     }
 
 
-    urls =
-        urls.filter(
-            item =>
-                item.id !== id
-        );
-
-
-    save();
-
-    render();
-
-}
-
-
-// ============================================
-// GENERATE CODE
-// ============================================
-
-function generateCode(length) {
-
-    const chars =
-        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
-
-    let code;
-
-
-    do {
-
-        code = "";
-
-
-        for (
-            let i = 0;
-            i < length;
-            i++
-        ) {
-
-            code +=
-                chars[
-                    Math.floor(
-                        Math.random() *
-                        chars.length
-                    )
-                ];
-
-        }
-
-    } while (
-        urls.some(
-            item =>
-                item.code === code
-        )
-    );
-
-
-    return code;
+    try {
+        await apiRequest(`/urls/${encodeURIComponent(id)}`, {
+            method: "DELETE"
+        });
+        await loadShortlinks();
+    } catch (error) {
+        console.error(error);
+        showMessage(error.message, "error");
+    }
 
 }
 
@@ -721,20 +505,6 @@ function isValidUrl(value) {
         return false;
 
     }
-
-}
-
-
-// ============================================
-// STORAGE
-// ============================================
-
-function save() {
-
-    localStorage.setItem(
-        "shortly_urls",
-        JSON.stringify(urls)
-    );
 
 }
 
@@ -773,6 +543,9 @@ function clearMessage() {
 // ============================================
 
 function formatDate(date) {
+    if (!date) {
+        return "N/A";
+    }
 
     return new Date(date)
         .toLocaleDateString(

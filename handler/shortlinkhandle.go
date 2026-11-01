@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"ProjectShortLink/repository"
 	"ProjectShortLink/service"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -32,7 +34,7 @@ func (handle *ShortlinkHandler) Create(c *gin.Context) {
 		})
 		return
 	}
-	result, err := handle.service.CreateShortlink(req.URL)
+	result, err := handle.service.CreateShortlinkWithCode(req.URL, req.CustomCode)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"message": err.Error(),
@@ -44,7 +46,62 @@ func (handle *ShortlinkHandler) Create(c *gin.Context) {
 		"id":           result.ID,
 		"original_url": result.OriginalURL,
 		"short_code":   result.ShortCode,
-		"short_url":    "http://localhost:8080/" + result.ShortCode,
+		"short_url":    "/api/" + result.ShortCode,
 		"click_count":  result.ClickCount,
+	})
+}
+
+// GET /:code
+func (h *ShortlinkHandler) Redirect(c *gin.Context) {
+	code := c.Param("code")
+
+	result, err := h.service.RedirectURL(code)
+
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, repository.ErrNotFound) {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{
+			"message": err.Error(),
+		})
+		return
+	}
+	// Arahkan browser ke URL asli
+	c.Redirect(http.StatusFound, result.OriginalURL)
+}
+
+// GET /api/urls
+func (h *ShortlinkHandler) GetAll(c *gin.Context) {
+	urls, err := h.service.GetAllShortlinks()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "gagal mengambil data shortlink",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Data shortlink berhasil diambil",
+		"total":   len(urls),
+		"data":    urls,
+	})
+}
+
+// DELETE /api/urls/:id
+func (h *ShortlinkHandler) Delete(c *gin.Context) {
+	if err := h.service.DeleteShortlink(c.Param("id")); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, repository.ErrNotFound) {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Shortlink berhasil dihapus",
 	})
 }
