@@ -1,0 +1,1 @@
+Projcet short link ini untuk membuat link menjadi simple dan pendek atau mengubah bawaan domain asli ke domain lain!
